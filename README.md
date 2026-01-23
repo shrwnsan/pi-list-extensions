@@ -11,8 +11,13 @@ ln -s /path/to/list-extensions.ts ~/.pi/agent/extensions/
 ## Usage
 
 ```
-/extensions      # interactive picker
-/extensions -v   # verbose (full paths)
+/extensions         # interactive picker (details panel shows paths)
+```
+
+Print mode (non-interactive):
+```bash
+echo "/extensions" | pi --no-session      # compact list
+echo "/extensions -v" | pi --no-session   # with full paths
 ```
 
 `↑↓` navigate · `Enter` open · `Esc` close
