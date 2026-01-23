@@ -2,6 +2,8 @@
 
 `/extensions` command for pi. Lists installed extensions, opens in editor.
 
+![screenshot](screenshot.png)
+
 ## Install
 
 ```bash
