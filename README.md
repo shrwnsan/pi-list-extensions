@@ -1,6 +1,6 @@
 # pi-list-extensions
 
-`/extensions` command for pi. Browse, enable/disable, and open extensions in your editor.
+`/extensions` command for [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent). Browse, enable/disable, and open extensions in your editor.
 
 <img src="screenshot.png" width="600">
 
