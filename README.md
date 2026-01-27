@@ -2,7 +2,7 @@
 
 `/extensions` command for pi. Browse, enable/disable, and open extensions in your editor.
 
-![screenshot](screenshot.png)
+<img src="screenshot.png" width="600">
 
 ## Install
 
