@@ -27,4 +27,4 @@ ln -s /path/to/list-extensions.ts ~/.pi/agent/extensions/
 
 The extension library shows all installed extensions from both global (`~/.pi/agent/extensions/`) and project (`.pi/extensions/`) scopes. Disabled extensions appear greyed out at the bottom of the list.
 
-Toggling an extension writes to `settings.json` using Pi's standard exclusion format. You'll need to restart Pi for changes to take effect.
+Toggling an extension writes to `settings.json` using Pi's [standard exclusion format](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/packages.md#package-filtering). You'll need to restart Pi for changes to take effect.
