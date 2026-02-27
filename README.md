@@ -20,11 +20,15 @@ ln -s /path/to/list-extensions.ts ~/.pi/agent/extensions/
 
 - `↑↓` navigate
 - `Enter` open in editor
-- `d` enable/disable extension
+- `d` enable/disable extension (🔒 locked for the extension manager itself)
 - `Esc` close
 
 ## Features
 
-The extension library shows all installed extensions from both global (`~/.pi/agent/extensions/`) and project (`.pi/extensions/`) scopes. Disabled extensions appear greyed out at the bottom of the list.
+- **Scope grouping** — Global extensions listed first, then project-scoped, alphabetical within each group
+- **Toggle in place** — Disabled extensions grey out where they are instead of jumping to the bottom
+- **Reload prompt** — After toggling, you're prompted to apply changes immediately (`ctx.reload()`) or defer to `/reload` later. Only prompts when the net state actually changed
+- **Self-protection** — The extension manager cannot disable itself (shown with 🔒)
+- **Resilient scanning** — Dangling symlinks or unreadable entries are skipped without hiding other extensions
 
-Toggling an extension writes to `settings.json` using Pi's [standard exclusion format](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/packages.md#package-filtering). You'll need to restart Pi for changes to take effect.
+Toggling an extension writes to `settings.json` using Pi's [standard exclusion format](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/packages.md#package-filtering).
