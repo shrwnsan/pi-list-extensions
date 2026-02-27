@@ -382,6 +382,7 @@ export default function (pi: ExtensionAPI) {
         if (togglesMade) {
           const reloadChoice = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
             const container = new Container();
+            container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
             container.addChild(new Text(
               theme.fg("warning", "⚠ ") + theme.bold("Extensions changed") + theme.fg("dim", " — reload to apply?"),
               1, 0,
@@ -407,7 +408,9 @@ export default function (pi: ExtensionAPI) {
             list.onSelect = (item) => done(item.value);
             list.onCancel = () => done(null);
 
+            container.addChild(new Text("", 0, 0));
             container.addChild(list);
+            container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
             return {
               render: (w) => container.render(w),
