@@ -150,9 +150,9 @@ function discoverExtensions(cwd: string): ExtensionInfo[] {
     }
   }
 
-  // Sort: enabled first, then alphabetically by name
+  // Sort: global first, then project; alphabetical within each group
   extensions.sort((a, b) => {
-    if (a.disabled !== b.disabled) return a.disabled ? 1 : -1;
+    if (a.scope !== b.scope) return a.scope === "global" ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
 
@@ -360,19 +360,13 @@ export default function (pi: ExtensionAPI) {
                     writeSettings(settingsPath, settings);
                     
                     togglesMade = true;
-                    restartNotice.setText(theme.fg("warning", "⚠ Restart pi for changes to take effect"));
+                    restartNotice.setText(theme.fg("warning", "⚠ Run /reload for changes to take effect"));
 
                     ext.disabled = nowDisabled;
 
-                    extensions.sort((a, b) => {
-                      if (a.disabled !== b.disabled) return a.disabled ? 1 : -1;
-                      return a.name.localeCompare(b.name);
-                    });
-
-                    const newIndex = extensions.findIndex((e) => e.path === ext.path);
-
                     selectList = new SelectList(buildSelectItems(), Math.min(extensions.length, MAX_VISIBLE_ITEMS), selectListTheme);
-                    if (newIndex >= 0) selectList.setSelectedIndex(newIndex);
+                    const currentIndex = extensions.findIndex((e) => e.path === ext.path);
+                    if (currentIndex >= 0) selectList.setSelectedIndex(currentIndex);
                     wireSelectList();
                     rebuildContainer();
                     updateDetails(selectList.getSelectedItem());
@@ -390,7 +384,7 @@ export default function (pi: ExtensionAPI) {
 
         // Show restart notification if toggles were made
         if (togglesMade) {
-          ctx.ui.notify("Restart pi for extension changes to take effect", "warning");
+          ctx.ui.notify("Run /reload for extension changes to take effect", "warning");
         }
 
         if (result !== null && result !== undefined) {
