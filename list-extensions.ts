@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
-import { readdirSync, statSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, basename, relative } from "node:path";
+import { readdirSync, mkdirSync, statSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, basename, dirname, relative } from "node:path";
 import { homedir } from "node:os";
 
 interface ExtensionInfo {
@@ -42,6 +42,7 @@ function readSettings(path: string): SettingsJson {
 }
 
 function writeSettings(path: string, settings: SettingsJson): void {
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(settings, null, 2) + "\n", "utf-8");
 }
 
@@ -51,10 +52,9 @@ function getResourcePattern(extPath: string, agentDir: string): string {
 }
 
 function isPathExcluded(settings: SettingsJson, extPath: string, agentDir: string): boolean {
-  const extensions = settings.extensions || [];
+  const extensions = Array.isArray(settings.extensions) ? settings.extensions : [];
   const pattern = getResourcePattern(extPath, agentDir);
-  const disablePattern = `-${pattern}`;
-  
+
   // Check for explicit disable pattern
   for (const entry of extensions) {
     const stripped = entry.startsWith("!") || entry.startsWith("+") || entry.startsWith("-") ? entry.slice(1) : entry;
@@ -66,7 +66,7 @@ function isPathExcluded(settings: SettingsJson, extPath: string, agentDir: strin
 }
 
 function toggleExclusion(settings: SettingsJson, extPath: string, agentDir: string, disable: boolean): SettingsJson {
-  const extensions = settings.extensions || [];
+  const extensions = Array.isArray(settings.extensions) ? settings.extensions : [];
   const pattern = getResourcePattern(extPath, agentDir);
   const disablePattern = `-${pattern}`;
   const enablePattern = `+${pattern}`;
@@ -112,7 +112,12 @@ function discoverExtensions(cwd: string): ExtensionInfo[] {
         if (entry.startsWith(".")) continue;
 
         const fullPath = join(dir, entry);
-        const stat = statSync(fullPath);
+        let stat;
+        try {
+          stat = statSync(fullPath);
+        } catch {
+          continue;
+        }
 
         if (stat.isFile() && (entry.endsWith(".ts") || entry.endsWith(".js"))) {
           // Direct file extension
