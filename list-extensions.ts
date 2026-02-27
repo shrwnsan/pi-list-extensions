@@ -392,8 +392,8 @@ export default function (pi: ExtensionAPI) {
             ));
 
             const items: SelectItem[] = [
-              { value: "now", label: theme.fg("accent", "Apply now"), description: "Run /reload immediately" },
-              { value: "later", label: "Later", description: "Run /reload manually when ready" },
+              { value: "now", label: theme.fg("accent", "Apply now"), description: "" },
+              { value: "later", label: "Later", description: "" },
             ];
 
             const list = new SelectList(items, 2, {
