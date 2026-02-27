@@ -134,16 +134,7 @@ function discoverExtensions(cwd: string): ExtensionInfo[] {
           const indexJsPath = join(fullPath, "index.js");
           const packagePath = join(fullPath, "package.json");
 
-          if (existsSync(indexPath) || existsSync(indexJsPath)) {
-            extensions.push({
-              name: entry,
-              path: fullPath,
-              scope,
-              type: "directory",
-              disabled: isPathExcluded(settings, fullPath, agentDir),
-            });
-          } else if (existsSync(packagePath)) {
-            // Package with pi field
+          if (existsSync(indexPath) || existsSync(indexJsPath) || existsSync(packagePath)) {
             extensions.push({
               name: entry,
               path: fullPath,
@@ -222,18 +213,17 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (ctx.hasUI) {
-        let extByPath = new Map(extensions.map((ext) => [ext.path, ext]));
+        const extByPath = new Map(extensions.map((ext) => [ext.path, ext]));
+        const MAX_VISIBLE_ITEMS = 20;
 
         let togglesMade = false;
         
         const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-          // Function to rebuild items from current extensions state
           const buildSelectItems = (): SelectItem[] => {
             return extensions.map((ext) => {
               const isDir = ext.type === "directory";
               const iconSymbol = isDir ? "📦" : "⚡";
 
-              // Grey out disabled extensions
               let icon: string;
               let nameDisplay: string;
               let description: string;
@@ -259,7 +249,14 @@ export default function (pi: ExtensionAPI) {
             });
           };
 
-          let selectItems = buildSelectItems();
+          const selectListTheme = {
+            selectedPrefix: (t: string) => theme.fg("accent", t),
+            selectedText: (t: string) => theme.fg("accent", t),
+            description: (t: string) => theme.fg("muted", t),
+            scrollInfo: (t: string) => theme.fg("dim", t),
+            noMatch: (t: string) => theme.fg("warning", t),
+          };
+
           const container = new Container();
 
           const globalCount = extensions.filter((e) => e.scope === "global").length;
@@ -279,6 +276,9 @@ export default function (pi: ExtensionAPI) {
           const subtitle = new Text(getSubtitleText(), 1, 0);
           const detailText = new Text("", 1, 0);
           const restartNotice = new Text("", 1, 0);
+          const helpText = new Text(
+            theme.fg("dim", "↑↓ navigate • enter open • d enable/disable • esc close"), 1, 0,
+          );
 
           const updateDetails = (item: SelectItem | null) => {
             if (!item) {
@@ -311,40 +311,35 @@ export default function (pi: ExtensionAPI) {
             detailText.setText(lines.join("\n"));
           };
 
-          // Top border
-          container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-          container.addChild(title);
-          container.addChild(subtitle);
+          let selectList: SelectList;
 
-          // SelectList with theme
-          let selectList = new SelectList(selectItems, Math.min(selectItems.length, 20), {
-            selectedPrefix: (t) => theme.fg("accent", t),
-            selectedText: (t) => theme.fg("accent", t),
-            description: (t) => theme.fg("muted", t),
-            scrollInfo: (t) => theme.fg("dim", t),
-            noMatch: (t) => theme.fg("warning", t),
-          });
-
-          selectList.onSelect = (item) => done(item.value);
-          selectList.onCancel = () => done(null);
-          selectList.onSelectionChange = (item) => {
-            updateDetails(item);
-            tui.requestRender();
+          const wireSelectList = () => {
+            selectList.onSelect = (item) => done(item.value);
+            selectList.onCancel = () => done(null);
+            selectList.onSelectionChange = (item) => {
+              updateDetails(item);
+              tui.requestRender();
+            };
           };
 
+          const rebuildContainer = () => {
+            container.children = [];
+            container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+            container.addChild(title);
+            subtitle.setText(getSubtitleText());
+            container.addChild(subtitle);
+            container.addChild(selectList);
+            container.addChild(detailText);
+            container.addChild(restartNotice);
+            container.addChild(helpText);
+            container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+          };
+
+          // Initial build
+          selectList = new SelectList(buildSelectItems(), Math.min(extensions.length, MAX_VISIBLE_ITEMS), selectListTheme);
+          wireSelectList();
+          rebuildContainer();
           updateDetails(selectList.getSelectedItem());
-
-          container.addChild(selectList);
-          container.addChild(detailText);
-          container.addChild(restartNotice);
-
-          // Help text with toggle key
-          container.addChild(
-            new Text(theme.fg("dim", "↑↓ navigate • enter open • d enable/disable • esc close"), 1, 0),
-          );
-
-          // Bottom border
-          container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 
           return {
             render: (w) => container.render(w),
@@ -356,76 +351,30 @@ export default function (pi: ExtensionAPI) {
                 if (selected) {
                   const ext = extByPath.get(selected.value);
                   if (ext) {
-                    // Read current settings for this scope
                     const settingsPath = getSettingsPath(ext.scope, ctx.cwd);
                     const agentDir = getAgentDir(ext.scope, ctx.cwd);
                     let settings = readSettings(settingsPath);
 
-                    // Toggle the exclusion
                     const nowDisabled = !ext.disabled;
                     settings = toggleExclusion(settings, ext.path, agentDir, nowDisabled);
-
-                    // Write back
                     writeSettings(settingsPath, settings);
                     
-                    // Mark that changes were made
                     togglesMade = true;
                     restartNotice.setText(theme.fg("warning", "⚠ Restart pi for changes to take effect"));
 
-                    // Update extension info
                     ext.disabled = nowDisabled;
 
-                    // Re-sort extensions
                     extensions.sort((a, b) => {
                       if (a.disabled !== b.disabled) return a.disabled ? 1 : -1;
                       return a.name.localeCompare(b.name);
                     });
 
-                    // Find new index of the toggled extension
                     const newIndex = extensions.findIndex((e) => e.path === ext.path);
 
-                    // Rebuild select items
-                    selectItems = buildSelectItems();
-
-                    // Recreate SelectList with new items
-                    container.children = [];
-                    container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-                    container.addChild(title);
-                    subtitle.setText(getSubtitleText());
-                    container.addChild(subtitle);
-
-                    selectList = new SelectList(selectItems, Math.min(selectItems.length, 20), {
-                      selectedPrefix: (t) => theme.fg("accent", t),
-                      selectedText: (t) => theme.fg("accent", t),
-                      description: (t) => theme.fg("muted", t),
-                      scrollInfo: (t) => theme.fg("dim", t),
-                      noMatch: (t) => theme.fg("warning", t),
-                    });
-
-                    // Set selection to the toggled item
-                    if (newIndex >= 0) {
-                      selectList.setSelectedIndex(newIndex);
-                    }
-
-                    selectList.onSelect = (item) => done(item.value);
-                    selectList.onCancel = () => done(null);
-                    selectList.onSelectionChange = (item) => {
-                      updateDetails(item);
-                      tui.requestRender();
-                    };
-
-                    container.addChild(selectList);
-                    container.addChild(detailText);
-                    container.addChild(restartNotice);
-                    container.addChild(
-                      new Text(
-                        theme.fg("dim", "↑↓ navigate • enter open • d enable/disable • esc close"),
-                        1,
-                        0,
-                      ),
-                    );
-                    container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-
+                    selectList = new SelectList(buildSelectItems(), Math.min(extensions.length, MAX_VISIBLE_ITEMS), selectListTheme);
+                    if (newIndex >= 0) selectList.setSelectedIndex(newIndex);
+                    wireSelectList();
+                    rebuildContainer();
                     updateDetails(selectList.getSelectedItem());
                     tui.requestRender();
                   }
