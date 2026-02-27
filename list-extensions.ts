@@ -303,6 +303,7 @@ export default function (pi: ExtensionAPI) {
             const statusLabel = ext.disabled ? theme.fg("dim", " (disabled)") : "";
 
             const lines = [
+              "",
               `${theme.fg("accent", "Selected:")} ${icon} ${theme.bold(ext.name)}${statusLabel} ${theme.fg("dim", "•")} ${typeLabel} ${theme.fg("dim", "•")} ${scopeLabel}`,
               `${theme.fg("muted", "Path:")} ${theme.fg("dim", ext.path)}`,
             ];
