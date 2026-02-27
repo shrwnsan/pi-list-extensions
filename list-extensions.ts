@@ -275,7 +275,6 @@ export default function (pi: ExtensionAPI) {
 
           const subtitle = new Text(getSubtitleText(), 1, 0);
           const detailText = new Text("", 1, 0);
-          const restartNotice = new Text("", 1, 0);
           const helpText = new Text(
             theme.fg("dim", "↑↓ navigate • enter open • d enable/disable • esc close"), 1, 0,
           );
@@ -330,7 +329,6 @@ export default function (pi: ExtensionAPI) {
             container.addChild(subtitle);
             container.addChild(selectList);
             container.addChild(detailText);
-            container.addChild(restartNotice);
             container.addChild(helpText);
             container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
           };
@@ -360,8 +358,6 @@ export default function (pi: ExtensionAPI) {
                     writeSettings(settingsPath, settings);
                     
                     togglesMade = true;
-                    restartNotice.setText(theme.fg("warning", "⚠ Run /reload for changes to take effect"));
-
                     ext.disabled = nowDisabled;
 
                     selectList = new SelectList(buildSelectItems(), Math.min(extensions.length, MAX_VISIBLE_ITEMS), selectListTheme);
@@ -382,9 +378,53 @@ export default function (pi: ExtensionAPI) {
           };
         });
 
-        // Show restart notification if toggles were made
+        // Prompt to reload if toggles were made
         if (togglesMade) {
-          ctx.ui.notify("Run /reload for extension changes to take effect", "warning");
+          const reloadChoice = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+            const container = new Container();
+            container.addChild(new Text(
+              theme.fg("warning", "⚠ ") + theme.bold("Extensions changed") + theme.fg("dim", " — reload to apply?"),
+              1, 0,
+            ));
+            container.addChild(new Text(
+              theme.fg("dim", "This will reload extensions, skills, prompts, and themes."),
+              1, 0,
+            ));
+
+            const items: SelectItem[] = [
+              { value: "now", label: theme.fg("accent", "Apply now"), description: "Run /reload immediately" },
+              { value: "later", label: "Later", description: "Run /reload manually when ready" },
+            ];
+
+            const list = new SelectList(items, 2, {
+              selectedPrefix: (t: string) => theme.fg("accent", t),
+              selectedText: (t: string) => theme.fg("accent", t),
+              description: (t: string) => theme.fg("muted", t),
+              scrollInfo: (t: string) => theme.fg("dim", t),
+              noMatch: (t: string) => theme.fg("warning", t),
+            });
+
+            list.onSelect = (item) => done(item.value);
+            list.onCancel = () => done(null);
+
+            container.addChild(list);
+
+            return {
+              render: (w) => container.render(w),
+              invalidate: () => container.invalidate(),
+              handleInput: (data) => {
+                list.handleInput(data);
+                tui.requestRender();
+              },
+            };
+          });
+
+          if (reloadChoice === "now") {
+            await ctx.reload();
+            ctx.ui.notify("Extensions reloaded", "info");
+          } else {
+            ctx.ui.notify("Run /reload when ready to apply changes", "info");
+          }
         }
 
         if (result !== null && result !== undefined) {
