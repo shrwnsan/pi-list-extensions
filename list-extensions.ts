@@ -1,9 +1,25 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
-import { readdirSync, mkdirSync, statSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, mkdirSync, realpathSync, statSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, basename, dirname, relative } from "node:path";
 import { homedir } from "node:os";
+
+// Resolve own path for self-protection (prevent disabling the extension manager)
+let selfPath: string | null = null;
+try {
+  selfPath = realpathSync(new URL(import.meta.url).pathname);
+} catch {}
+
+function isSelf(extPath: string): boolean {
+  if (!selfPath) return false;
+  try {
+    const resolved = realpathSync(extPath);
+    return resolved === selfPath || resolved === dirname(selfPath);
+  } catch {
+    return false;
+  }
+}
 
 interface ExtensionInfo {
   name: string;
@@ -240,6 +256,10 @@ export default function (pi: ExtensionAPI) {
                 description = `${scopeLabel} ${theme.fg("dim", "•")} ${typeLabel}`;
               }
 
+              if (isSelf(ext.path)) {
+                description += ` ${theme.fg("dim", "• 🔒")}`;
+              }
+
               return {
                 value: ext.path,
                 label: `${icon}  ${nameDisplay}`,
@@ -348,7 +368,7 @@ export default function (pi: ExtensionAPI) {
                 const selected = selectList.getSelectedItem();
                 if (selected) {
                   const ext = extByPath.get(selected.value);
-                  if (ext) {
+                  if (ext && !isSelf(ext.path)) {
                     const settingsPath = getSettingsPath(ext.scope, ctx.cwd);
                     const agentDir = getAgentDir(ext.scope, ctx.cwd);
                     let settings = readSettings(settingsPath);
