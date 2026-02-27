@@ -214,9 +214,8 @@ export default function (pi: ExtensionAPI) {
 
       if (ctx.hasUI) {
         const extByPath = new Map(extensions.map((ext) => [ext.path, ext]));
+        const initialState = new Map(extensions.map((ext) => [ext.path, ext.disabled]));
         const MAX_VISIBLE_ITEMS = 20;
-
-        let togglesMade = false;
         
         const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
           const buildSelectItems = (): SelectItem[] => {
@@ -357,8 +356,6 @@ export default function (pi: ExtensionAPI) {
                     const nowDisabled = !ext.disabled;
                     settings = toggleExclusion(settings, ext.path, agentDir, nowDisabled);
                     writeSettings(settingsPath, settings);
-                    
-                    togglesMade = true;
                     ext.disabled = nowDisabled;
 
                     selectList = new SelectList(buildSelectItems(), Math.min(extensions.length, MAX_VISIBLE_ITEMS), selectListTheme);
@@ -379,8 +376,9 @@ export default function (pi: ExtensionAPI) {
           };
         });
 
-        // Prompt to reload if toggles were made
-        if (togglesMade) {
+        // Prompt to reload if state actually changed
+        const hasChanges = extensions.some((e) => e.disabled !== initialState.get(e.path));
+        if (hasChanges) {
           const reloadChoice = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
             const container = new Container();
             container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
