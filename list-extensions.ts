@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
-import { readdirSync, mkdirSync, realpathSync, statSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, realpathSync, statSync, existsSync, readFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, basename, dirname, relative } from "node:path";
 import { homedir } from "node:os";
 
@@ -27,6 +28,7 @@ interface ExtensionInfo {
   scope: "global" | "project";
   type: "file" | "directory";
   disabled: boolean;
+  source?: string;
 }
 
 interface SettingsJson {
@@ -57,9 +59,9 @@ function readSettings(path: string): SettingsJson {
   return {};
 }
 
-function writeSettings(path: string, settings: SettingsJson): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+async function writeSettings(path: string, settings: SettingsJson): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(settings, null, 2) + "\n", "utf-8");
 }
 
 // Get the relative pattern for an extension (relative to agentDir)
@@ -100,6 +102,167 @@ function toggleExclusion(settings: SettingsJson, extPath: string, agentDir: stri
   }
 
   return { ...settings, extensions: updated };
+}
+
+type PackageType = "npm" | "git" | "local";
+
+interface ParsedPackageSource {
+  type: PackageType;
+  source: string;
+}
+
+function parsePackageSource(source: string): ParsedPackageSource | null {
+  if (source.startsWith("npm:")) {
+    return { type: "npm", source };
+  }
+  if (source.startsWith("git:") || source.startsWith("https://") || source.startsWith("http://") || source.startsWith("ssh://") || source.startsWith("git@")) {
+    return { type: "git", source };
+  }
+  if (source.startsWith("/") || source.startsWith("./") || source.startsWith("../")) {
+    return { type: "local", source };
+  }
+  return null;
+}
+
+function resolveGitPackagePath(source: string, scope: "global" | "project", cwd: string): string | null {
+  // Strip git: prefix if present
+  const url = source.startsWith("git:") ? source.slice(4) : source;
+
+  // Parse host and path from various URL formats
+  let host: string;
+  let repoPath: string;
+
+  if (url.startsWith("git@")) {
+    // git@github.com:user/repo
+    const colonIdx = url.indexOf(":");
+    if (colonIdx === -1) return null;
+    host = url.slice(4, colonIdx);
+    repoPath = url.slice(colonIdx + 1).replace(/\.git$/, "");
+  } else if (url.startsWith("ssh://")) {
+    // ssh://git@github.com/user/repo
+    try {
+      const u = new URL(url);
+      host = u.hostname;
+      repoPath = u.pathname.slice(1).replace(/\.git$/, "");
+    } catch {
+      return null;
+    }
+  } else if (url.startsWith("https://") || url.startsWith("http://")) {
+    try {
+      const u = new URL(url);
+      host = u.hostname;
+      repoPath = u.pathname.slice(1).replace(/\.git$/, "");
+    } catch {
+      return null;
+    }
+  } else {
+    // Shorthand: github.com/user/repo
+    const slashIdx = url.indexOf("/");
+    if (slashIdx === -1) return null;
+    host = url.slice(0, slashIdx);
+    repoPath = url.slice(slashIdx + 1).replace(/\.git$/, "");
+  }
+
+  const baseDir = scope === "global"
+    ? join(homedir(), ".pi", "agent", "git")
+    : join(cwd, ".pi", "git");
+
+  return join(baseDir, host, repoPath);
+}
+
+function resolveNpmPackagePath(name: string, scope: "global" | "project", cwd: string): string {
+  const baseDir = scope === "global"
+    ? join(homedir(), ".pi", "agent", "npm", "node_modules")
+    : join(cwd, ".pi", "npm", "node_modules");
+  return join(baseDir, name);
+}
+
+function discoverPackageExtensions(cwd: string): ExtensionInfo[] {
+  const extensions: ExtensionInfo[] = [];
+  const globalSettings = readSettings(getSettingsPath("global", cwd));
+  const projectSettings = readSettings(getSettingsPath("project", cwd));
+
+  const scopeEntries: Array<{ settings: SettingsJson; scope: "global" | "project" }> = [
+    { settings: projectSettings, scope: "project" },
+    { settings: globalSettings, scope: "global" },
+  ];
+
+  for (const { settings, scope } of scopeEntries) {
+    const packages = settings.packages;
+    if (!Array.isArray(packages)) continue;
+
+    for (const pkg of packages) {
+      const sourceStr = typeof pkg === "string" ? pkg : pkg.source;
+      if (!sourceStr) continue;
+
+      // Skip filtered packages
+      const filter = typeof pkg === "object" ? pkg : undefined;
+      if (filter?.extensions?.length === 0) continue;
+
+      const parsed = parsePackageSource(sourceStr);
+      if (!parsed) continue;
+
+      let installedPath: string | null = null;
+      if (parsed.type === "git") {
+        installedPath = resolveGitPackagePath(parsed.source, scope, cwd);
+      } else if (parsed.type === "npm") {
+        // Extract package name from spec (e.g., "pi-answer@1.0.0" → "pi-answer", "@scope/pkg@1.0" → "@scope/pkg")
+        const spec = parsed.source.slice("npm:".length).trim();
+        const atIdx = spec.indexOf("@");
+        const slashIdx = spec.indexOf("/");
+        let name: string;
+        if (spec.startsWith("@") && slashIdx !== -1) {
+          // Scoped package: @scope/pkg@version → @scope/pkg
+          const versionAt = spec.indexOf("@", slashIdx);
+          name = versionAt !== -1 ? spec.slice(0, versionAt) : spec;
+        } else if (atIdx !== -1) {
+          // Unscoped: pkg@version → pkg
+          name = spec.slice(0, atIdx);
+        } else {
+          name = spec;
+        }
+        installedPath = resolveNpmPackagePath(name, scope, cwd);
+      } else if (parsed.type === "local") {
+        const resolved = parsed.source.startsWith(".")
+          ? join(scope === "global" ? homedir() : cwd, parsed.source)
+          : parsed.source;
+        installedPath = resolved;
+      }
+
+      if (!installedPath || !existsSync(installedPath)) continue;
+
+      let stat;
+      try {
+        stat = statSync(installedPath);
+      } catch {
+        continue;
+      }
+
+      const name = basename(installedPath);
+      const isDir = stat.isDirectory();
+
+      // Only add if it looks like a valid extension source
+      if (!isDir) continue;
+
+      const hasExtensions = existsSync(join(installedPath, "extensions"))
+        || existsSync(join(installedPath, "index.ts"))
+        || existsSync(join(installedPath, "index.js"))
+        || existsSync(join(installedPath, "package.json"));
+
+      if (!hasExtensions) continue;
+
+      extensions.push({
+        name,
+        path: installedPath,
+        scope,
+        type: "directory",
+        disabled: false,
+        source: parsed.source,
+      });
+    }
+  }
+
+  return extensions;
 }
 
 function discoverExtensions(cwd: string): ExtensionInfo[] {
@@ -163,6 +326,14 @@ function discoverExtensions(cwd: string): ExtensionInfo[] {
       }
     } catch (e) {
       // Skip directories we can't read
+    }
+  }
+
+  // Add package-discovered extensions, avoiding duplicates by path
+  const existingPaths = new Set(extensions.map((e) => e.path));
+  for (const pkgExt of discoverPackageExtensions(cwd)) {
+    if (!existingPaths.has(pkgExt.path)) {
+      extensions.push(pkgExt);
     }
   }
 
@@ -244,7 +415,9 @@ export default function (pi: ExtensionAPI) {
               let description: string;
 
               const scopeLabel = ext.scope === "project" ? "Project" : "Global";
-              const typeLabel = isDir ? "Package" : "Script";
+              const typeLabel = ext.source
+                ? (ext.source.startsWith("npm:") ? "npm" : ext.source.startsWith("git:") ? "git" : "local")
+                : (isDir ? "Package" : "Script");
 
               if (ext.disabled) {
                 icon = theme.fg("dim", iconSymbol);
@@ -317,7 +490,9 @@ export default function (pi: ExtensionAPI) {
               : isDir
                 ? theme.fg("warning", iconSymbol)
                 : theme.fg("accent", iconSymbol);
-            const typeLabel = isDir ? "Package" : "Script";
+            const typeLabel = ext.source
+              ? (ext.source.startsWith("npm:") ? "npm" : ext.source.startsWith("git:") ? "git" : "local")
+              : (isDir ? "Package" : "Script");
             const scopeLabel = ext.scope === "project" ? "Project" : "Global";
             const statusLabel = ext.disabled ? theme.fg("dim", " (disabled)") : "";
 
@@ -375,7 +550,7 @@ export default function (pi: ExtensionAPI) {
 
                     const nowDisabled = !ext.disabled;
                     settings = toggleExclusion(settings, ext.path, agentDir, nowDisabled);
-                    writeSettings(settingsPath, settings);
+                    await writeSettings(settingsPath, settings);
                     ext.disabled = nowDisabled;
 
                     selectList = new SelectList(buildSelectItems(), Math.min(extensions.length, MAX_VISIBLE_ITEMS), selectListTheme);
@@ -443,7 +618,7 @@ export default function (pi: ExtensionAPI) {
 
           if (reloadChoice === "now") {
             await ctx.reload();
-            ctx.ui.notify("Extensions reloaded", "info");
+            return;
           } else {
             ctx.ui.notify("Run /reload when ready to apply changes", "info");
           }
@@ -469,12 +644,12 @@ export default function (pi: ExtensionAPI) {
 
           // Use $VISUAL, $EDITOR, or fall back to 'code'
           const editor = process.env.VISUAL || process.env.EDITOR || "code";
-          const resultExec = await pi.exec(editor, [filePath]);
+          const openResult = await pi.exec(editor, [filePath]);
 
-          if (resultExec.code === 0) {
+          if (openResult.code === 0) {
             ctx.ui.notify(`Opened ${ext.name} in ${editor}`, "info");
           } else {
-            ctx.ui.notify(`Failed to open: ${resultExec.stderr || "unknown error"}`, "error");
+            ctx.ui.notify(`Failed to open: ${openResult.stderr || "unknown error"}`, "error");
           }
         }
       } else {

@@ -7,7 +7,15 @@
 ## Install
 
 ```bash
-ln -s /path/to/list-extensions.ts ~/.pi/agent/extensions/
+pi install git:github.com/shrwnsan/pi-list-extensions@dev
+```
+
+Or add to `~/.pi/agent/settings.json`:
+
+```json
+{
+  "packages": ["git:github.com/shrwnsan/pi-list-extensions@dev"]
+}
 ```
 
 ## Usage
@@ -30,5 +38,6 @@ ln -s /path/to/list-extensions.ts ~/.pi/agent/extensions/
 - **Reload prompt** — After toggling, you're prompted to apply changes immediately (`ctx.reload()`) or defer to `/reload` later. Only prompts when the net state actually changed
 - **Self-protection** — The extension manager cannot disable itself (shown with 🔒)
 - **Resilient scanning** — Dangling symlinks or unreadable entries are skipped without hiding other extensions
+- **Package discovery** — Also shows extensions installed via `pi install` (npm, git, local packages from `settings.json`)
 
 Toggling an extension writes to `settings.json` using Pi's [standard exclusion format](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/packages.md#package-filtering).
