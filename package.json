@@ -1,0 +1,10 @@
+{
+  "name": "pi-list-extensions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "List installed pi extensions",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["list-extensions.ts"]
+  }
+}
