@@ -537,7 +537,7 @@ export default function (pi: ExtensionAPI) {
           return {
             render: (w) => container.render(w),
             invalidate: () => container.invalidate(),
-            handleInput: (data) => {
+            handleInput: async (data) => {
               // Handle 'd' key for toggle
               if (data === "d" || data === "D") {
                 const selected = selectList.getSelectedItem();
