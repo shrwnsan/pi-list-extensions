@@ -1,8 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
-import { readdirSync, realpathSync, statSync, existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { readdirSync, mkdirSync, realpathSync, statSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, basename, dirname, relative } from "node:path";
 import { homedir } from "node:os";
 
@@ -59,9 +58,9 @@ function readSettings(path: string): SettingsJson {
   return {};
 }
 
-async function writeSettings(path: string, settings: SettingsJson): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+function writeSettings(path: string, settings: SettingsJson): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(settings, null, 2) + "\n", "utf-8");
 }
 
 // Get the relative pattern for an extension (relative to agentDir)
@@ -537,7 +536,7 @@ export default function (pi: ExtensionAPI) {
           return {
             render: (w) => container.render(w),
             invalidate: () => container.invalidate(),
-            handleInput: async (data) => {
+            handleInput: (data) => {
               // Handle 'd' key for toggle
               if (data === "d" || data === "D") {
                 const selected = selectList.getSelectedItem();
@@ -550,7 +549,7 @@ export default function (pi: ExtensionAPI) {
 
                     const nowDisabled = !ext.disabled;
                     settings = toggleExclusion(settings, ext.path, agentDir, nowDisabled);
-                    await writeSettings(settingsPath, settings);
+                    writeSettings(settingsPath, settings);
                     ext.disabled = nowDisabled;
 
                     selectList = new SelectList(buildSelectItems(), Math.min(extensions.length, MAX_VISIBLE_ITEMS), selectListTheme);
