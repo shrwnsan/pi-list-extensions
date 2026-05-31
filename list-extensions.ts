@@ -162,6 +162,12 @@ function resolveGitPackagePath(source: string, scope: "global" | "project", cwd:
     repoPath = url.slice(slashIdx + 1).replace(/\.git$/, "");
   }
 
+  // Strip @ref suffix (e.g. "user/repo@main" → "user/repo")
+  const refIdx = repoPath.lastIndexOf("@");
+  if (refIdx > 0) {
+    repoPath = repoPath.slice(0, refIdx);
+  }
+
   const baseDir = scope === "global"
     ? join(homedir(), ".pi", "agent", "git")
     : join(cwd, ".pi", "git");
